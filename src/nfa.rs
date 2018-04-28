@@ -12,7 +12,7 @@ pub enum Label {
 
 #[derive(Debug)]
 pub struct State {
-    transitions: HashMap<char, HashSet<usize>>,
+    pub transitions: HashMap<char, HashSet<usize>>,
     epsilon_trnasitions: HashSet<usize>,
     pub id: usize,
     pub accept: bool,
@@ -215,6 +215,8 @@ empty -> s0 [label = "開始"];
     }
 }
 
+use std::collections::hash_set::Iter;
+
 #[derive(Debug, Clone)]
 pub struct StateSet(pub HashSet<usize>);
 
@@ -237,5 +239,19 @@ impl Hash for StateSet {
             .collect::<Vec<usize>>()
             .sort()
             .hash(_state);
+    }
+}
+
+impl StateSet {
+    pub fn insert(&mut self, state: usize) {
+        self.0.insert(state);
+    }
+
+    pub fn get(&self, state: &usize) -> Option<&usize> {
+        self.0.get(state)
+    }
+
+    pub fn iter(&self) -> Iter<usize> {
+        self.0.iter()
     }
 }
