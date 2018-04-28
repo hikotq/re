@@ -104,6 +104,18 @@ impl Dfa {
             .insert(*state_set_to_id.get(&state_set).unwrap(), transitions);
     }
 
+    pub fn accept(&self, s: &str) -> bool {
+        let mut state = 0;
+        for c in s.to_string().chars() {
+            if let Some(&next_state) = self.transitions.get(&state).unwrap().get(&c) {
+                state = next_state;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
     pub fn dot(&self) -> String {
         let mut dot = r###"
             digraph G {
