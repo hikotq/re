@@ -113,7 +113,11 @@ impl Dfa {
                 return false;
             }
         }
-        return true;
+        if self.ac_state_set.contains(&state) {
+            true
+        } else {
+            false
+        }
     }
 
     pub fn dot(&self) -> String {
