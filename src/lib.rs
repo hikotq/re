@@ -1,3 +1,3 @@
 extern crate regparser;
-mod dfa;
-mod nfa;
+pub mod dfa;
+pub mod nfa;
