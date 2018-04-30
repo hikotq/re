@@ -95,18 +95,21 @@ impl Nfa {
             }
             OpStar => {
                 let &Node { ref lhs, .. } = node;
-                let loop_node_id = self.states.len();
-                self.construct(lhs.as_ref().unwrap());
                 self.add_state();
-                let states_num = self.states.len();
-                self.states[states_num - 1]
-                    .epsilon_trnasitions
-                    .insert(loop_node_id);
-                self.add_state();
-                let states_num = self.states.len();
+                let loop_node_id = self.states.len() - 1;
                 self.states[loop_node_id]
                     .epsilon_trnasitions
-                    .insert(states_num);
+                    .insert(loop_node_id + 1);
+                self.construct(lhs.as_ref().unwrap());
+                self.add_state();
+                let last_state_id = self.states.len() - 1;
+                self.states[last_state_id]
+                    .epsilon_trnasitions
+                    .insert(loop_node_id);
+                let next_state_id = self.states.len();
+                self.states[loop_node_id]
+                    .epsilon_trnasitions
+                    .insert(next_state_id);
             }
             Literal => {
                 self.add_state();
@@ -187,11 +190,19 @@ impl Nfa {
 digraph G {
 rankdir=LR;
 empty [label = "" shape = plaintext];
-node [shape = circle];
-empty -> s0 [label = "開始"];
         "###
             .to_owned();
-        let t_dot = "s{} -> s{} [label = \"{}\"]".to_owned();
+
+        let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
+        for state in self.states.iter() {
+            //println!("{} = {}", state.id, state.accept);
+        }
+        for ac_state in self.states.iter().filter(|&state| state.accept == true) {
+            println!("{} = {}", ac_state.id, ac_state.accept);
+            ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
+        }
+        dot.push_str(&(ac_state_dot + "\n"));
+        dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"];\n");
 
         for (id, state) in self.states.iter().enumerate() {
             for (label, t_state_set) in state.transitions.iter() {
@@ -253,5 +264,9 @@ impl StateSet {
 
     pub fn iter(&self) -> Iter<usize> {
         self.0.iter()
+    }
+
+    pub fn contains(&self, state: &usize) -> bool {
+        self.0.contains(state)
     }
 }
