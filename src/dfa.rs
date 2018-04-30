@@ -26,6 +26,9 @@ impl Dfa {
         let mut nfa_init_state_set = StateSet(HashSet::new());
         nfa_init_state_set.insert(0);
         nfa_init_state_set = StateSet(nfa.epsilon_expand(nfa_init_state_set));
+        if nfa_init_state_set.contains(&0) {
+            dfa.ac_state_set.insert(0);
+        }
         let mut done = HashSet::new();
         let mut state_set_to_id = HashMap::new();
         let nfa_ac_states = {
@@ -152,4 +155,85 @@ impl Dfa {
         let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
         f.write(dot.as_bytes()).unwrap();
     }
+}
+
+#[test]
+fn regex_accept_char() {
+    let regex = "a";
+    let s = "a";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    assert!(dfa.accept(s);)
+}
+
+#[test]
+fn regex_accept_union() {
+    let regex = "a|b";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "a";
+    assert!(dfa.accept(s));
+    let s = "b";
+    assert!(dfa.accept(s));
+}
+
+#[test]
+fn regex_accept_concat() {
+    let regex = "ab";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "ab";
+    assert!(dfa.accept(s));
+}
+
+#[test]
+fn regex_accept_star() {
+    let regex = "a*";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "";
+    assert!(dfa.accept(s));
+    let s = "a";
+    assert!(dfa.accept(s));
+    let s = "aaaaaaaaaaaaaaaa";
+    assert!(dfa.accept(s));
+}
+
+#[test]
+fn regex_accept_01() {
+    let regex = "(a|b)c";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "ac";
+    assert!(dfa.accept(s));
+    let s = "bc";
+    assert!(dfa.accept(s));
+}
+
+#[test]
+fn regex_accept_02() {
+    let regex = "a*c";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "";
+    assert!(dfa.accept(s));
+    let s = "ac";
+    assert!(dfa.accept(s));
+    let s = "aaaaac";
+    assert!(dfa.accept(s));
+}
+
+#[test]
+fn regex_accept_03() {
+    let regex = "(a|c)*";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "";
+    assert!(dfa.accept(s));
+    let s = "accccc";
+    assert!(dfa.accept(s));
+    let s = "aaaaac";
+    assert!(dfa.accept(s));
+    let s = "aaaaaaaaaaaaaaaa";
+    assert!(dfa.accept(s));
 }
