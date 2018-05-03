@@ -12,8 +12,8 @@ pub enum Label {
 
 #[derive(Debug)]
 pub struct State {
-    pub transitions: HashMap<char, HashSet<usize>>,
-    epsilon_trnasitions: HashSet<usize>,
+    pub transitions: HashMap<char, StateSet>,
+    epsilon_trnasitions: StateSet,
     pub id: usize,
     pub accept: bool,
 }
@@ -49,7 +49,7 @@ impl Nfa {
         let state_num = self.states.len();
         self.states.push(State {
             transitions: HashMap::new(),
-            epsilon_trnasitions: HashSet::new(),
+            epsilon_trnasitions: StateSet::new(),
             id: state_num,
             accept: false,
         });
@@ -114,7 +114,7 @@ impl Nfa {
             Literal => {
                 self.add_state();
                 let states_num = self.states.len();
-                let mut t = HashSet::new();
+                let mut t = StateSet::new();
                 t.insert(states_num);
                 let &Node { ref value, .. } = node;
                 self.states[states_num - 1]
@@ -127,8 +127,8 @@ impl Nfa {
         }
     }
 
-    pub fn reachable_subsets(&self, state_id: usize) -> HashSet<usize> {
-        let mut reachable_subsets = HashSet::new();
+    pub fn reachable_subsets(&self, state_id: usize) -> StateSet {
+        let mut reachable_subsets = StateSet::new();
         for byte in (0 as u8)..=255 {
             let c = byte as char;
             if let Some(state_set) = self.states[state_id].transitions.get(&c) {
@@ -143,9 +143,9 @@ impl Nfa {
         reachable_subsets
     }
 
-    pub fn epsilon_expand(&self, state_set: StateSet) -> HashSet<usize> {
+    pub fn epsilon_expand(&self, state_set: StateSet) -> StateSet {
         let mut queue = state_set.0.iter().cloned().collect::<Vec<usize>>();
-        let mut done: HashSet<usize> = HashSet::new();
+        let mut done: StateSet = StateSet::new();
         while queue.len() != 0 {
             let state_id = queue.pop().unwrap();
             let next = self.states[state_id].epsilon_trnasitions.clone();
@@ -163,17 +163,15 @@ impl Nfa {
         let mut transitions = HashMap::new();
         for byte in (0 as u8)..=255 {
             let c = byte as char;
-            let mut t = HashSet::new();
+            let mut t = StateSet::new();
             for id in reachable_states.0.iter() {
                 if let Some(state_set) = self.states[*id].transitions.get(&c) {
                     t = t.union(state_set).cloned().collect();
                 }
             }
-            let t: HashSet<usize> = t.union(&self.epsilon_expand(StateSet(t.clone())))
-                .cloned()
-                .collect();
+            let t: StateSet = t.union(&self.epsilon_expand(t.clone())).cloned().collect();
             if !t.is_empty() {
-                transitions.insert(c, StateSet(t));
+                transitions.insert(c, t);
             }
         }
         transitions
@@ -226,7 +224,8 @@ empty [label = "" shape = plaintext];
     }
 }
 
-use std::collections::hash_set::Iter;
+use std::ops::{Deref, DerefMut};
+use std::iter::FromIterator;
 
 #[derive(Debug, Clone)]
 pub struct StateSet(pub HashSet<usize>);
@@ -253,20 +252,32 @@ impl Hash for StateSet {
     }
 }
 
+impl Deref for StateSet {
+    type Target = HashSet<usize>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for StateSet {
+    fn deref_mut(&mut self) -> &mut HashSet<usize> {
+        &mut self.0
+    }
+}
+
+impl FromIterator<usize> for StateSet {
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> Self {
+        let mut c = StateSet::new();
+        for i in iter {
+            c.insert(i);
+        }
+
+        c
+    }
+}
+
 impl StateSet {
-    pub fn insert(&mut self, state: usize) {
-        self.0.insert(state);
-    }
-
-    pub fn get(&self, state: &usize) -> Option<&usize> {
-        self.0.get(state)
-    }
-
-    pub fn iter(&self) -> Iter<usize> {
-        self.0.iter()
-    }
-
-    pub fn contains(&self, state: &usize) -> bool {
-        self.0.contains(state)
+    pub fn new() -> StateSet {
+        StateSet(HashSet::new())
     }
 }

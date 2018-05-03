@@ -20,24 +20,24 @@ impl Dfa {
         let mut dfa = Dfa {
             transitions: HashMap::new(),
             init_state: 0,
-            ac_state_set: StateSet(HashSet::new()),
+            ac_state_set: StateSet::new(),
             states_num: 0,
         };
-        let mut nfa_init_state_set = StateSet(HashSet::new());
+        let mut nfa_init_state_set = StateSet::new();
         nfa_init_state_set.insert(0);
-        nfa_init_state_set = StateSet(nfa.epsilon_expand(nfa_init_state_set));
-        if nfa_init_state_set.contains(&0) {
-            dfa.ac_state_set.insert(0);
-        }
+        nfa_init_state_set = nfa.epsilon_expand(nfa_init_state_set);
         let mut done = HashSet::new();
         let mut state_set_to_id = HashMap::new();
         let nfa_ac_states = {
-            let mut ac_state_set = HashSet::new();
+            let mut ac_state_set = StateSet::new();
             for ac_state in nfa.states.iter().filter(|&state| state.accept) {
                 ac_state_set.insert(ac_state.id);
             }
-            StateSet(ac_state_set)
+            ac_state_set
         };
+        if nfa_init_state_set.intersection(&nfa_ac_states).count() != 0 {
+            dfa.ac_state_set.insert(0);
+        }
         dfa.construct_recursive(
             nfa,
             nfa_init_state_set,
@@ -64,28 +64,24 @@ impl Dfa {
         let mut transitions = HashMap::new();
         for byte in (0 as u8)..=255 {
             let c = byte as char;
-            let mut t = HashSet::new();
+            let mut t = StateSet::new();
             for id in state_set.clone().0.iter() {
                 if let Some(state_set) = nfa.states[*id].transitions.get(&c) {
                     t = t.union(state_set).cloned().collect();
                 }
             }
-            let t: HashSet<usize> = t.union(&nfa.epsilon_expand(StateSet(t.clone())))
-                .cloned()
-                .collect();
+            let t: StateSet = t.union(&nfa.epsilon_expand(t.clone())).cloned().collect();
             if !t.is_empty() {
-                state_set_to_id
-                    .entry(StateSet(t.clone()))
-                    .or_insert(self.states_num);
-                let id = *state_set_to_id.get(&StateSet(t.clone())).unwrap();
+                state_set_to_id.entry(t.clone()).or_insert(self.states_num);
+                let id = *state_set_to_id.get(&t.clone()).unwrap();
                 if id == self.states_num {
-                    if t.intersection(&nfa_ac_states.0).count() != 0 {
+                    if t.intersection(&nfa_ac_states).count() != 0 {
                         self.ac_state_set.insert(self.states_num);
                     }
                     self.states_num += 1;
                 }
                 transitions.insert(c, id);
-                subset_transitions.insert(c, StateSet(t));
+                subset_transitions.insert(c, t);
             }
         }
         {
@@ -215,7 +211,7 @@ fn regex_accept_02() {
     let regex = "a*c";
     let nfa = Nfa::re2nfa(regex);
     let dfa = Dfa::nfa2dfa(&nfa);
-    let s = "";
+    let s = "c";
     assert!(dfa.accept(s));
     let s = "ac";
     assert!(dfa.accept(s));
