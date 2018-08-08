@@ -1,7 +1,7 @@
 use regparser::parser::{Lexer, Node, NodeType, Parser};
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::{BufWriter, Write};
 
 #[derive(PartialEq, Eq, Hash)]
@@ -13,10 +13,12 @@ pub enum Label {
 #[derive(Debug)]
 pub struct State {
     pub transitions: HashMap<char, StateSet>,
-    epsilon_trnasitions: StateSet,
+    pub epsilon_transitions: StateSet,
     pub id: usize,
     pub accept: bool,
 }
+
+impl State {}
 
 #[derive(Debug)]
 pub struct Nfa {
@@ -27,13 +29,13 @@ impl Nfa {
     pub fn re2nfa(regex: &str) -> Nfa {
         let lexer = Lexer::new(regex.trim());
         let parser = Parser::new(lexer);
-        let mut syntax_tree = parser.struct_syntax_tree();
+        let syntax_tree = parser.struct_syntax_tree();
         if let Some(root) = syntax_tree.root {
             let mut nfa = Nfa { states: Vec::new() };
             nfa.add_state();
             let states_num = nfa.states.len();
             nfa.states[states_num - 1]
-                .epsilon_trnasitions
+                .epsilon_transitions
                 .insert(states_num);
             nfa.construct(&root);
             nfa.add_state();
@@ -45,11 +47,18 @@ impl Nfa {
         }
     }
 
+    pub fn start_states(&self) -> StateSet {
+        let mut start_t = StateSet::new();
+        start_t.insert(0);
+        let start_t = self.epsilon_expand(start_t);
+        start_t
+    }
+
     fn add_state(&mut self) {
         let state_num = self.states.len();
         self.states.push(State {
             transitions: HashMap::new(),
-            epsilon_trnasitions: StateSet::new(),
+            epsilon_transitions: StateSet::new(),
             id: state_num,
             accept: false,
         });
@@ -67,7 +76,7 @@ impl Nfa {
 
                 let states_num = self.states.len();
                 self.states[branch_node_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(states_num);
                 self.construct(lhs.as_ref().unwrap());
                 self.add_state();
@@ -76,14 +85,13 @@ impl Nfa {
 
                 let states_num = self.states.len();
                 self.states[branch_node_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(states_num);
                 self.construct(rhs.as_ref().unwrap());
-                let rhs_last_state_id = self.states.len() - 1;
 
                 let states_num = self.states.len();
                 self.states[lhs_last_state_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(states_num);
             }
             OpConcat => {
@@ -98,17 +106,17 @@ impl Nfa {
                 self.add_state();
                 let loop_node_id = self.states.len() - 1;
                 self.states[loop_node_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(loop_node_id + 1);
                 self.construct(lhs.as_ref().unwrap());
                 self.add_state();
                 let last_state_id = self.states.len() - 1;
                 self.states[last_state_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(loop_node_id);
                 let next_state_id = self.states.len();
                 self.states[loop_node_id]
-                    .epsilon_trnasitions
+                    .epsilon_transitions
                     .insert(next_state_id);
             }
             Literal => {
@@ -137,7 +145,7 @@ impl Nfa {
         }
 
         reachable_subsets = reachable_subsets
-            .union(&self.states[state_id].epsilon_trnasitions)
+            .union(&self.states[state_id].epsilon_transitions)
             .cloned()
             .collect();
         reachable_subsets
@@ -148,7 +156,7 @@ impl Nfa {
         let mut done: StateSet = StateSet::new();
         while queue.len() != 0 {
             let state_id = queue.pop().unwrap();
-            let next = self.states[state_id].epsilon_trnasitions.clone();
+            let next = self.states[state_id].epsilon_transitions.clone();
             done.insert(state_id);
             for next_state_id in next.iter() {
                 if !done.contains(next_state_id) {
@@ -177,6 +185,18 @@ impl Nfa {
         transitions
     }
 
+    pub fn t(&self, id: usize, c: u8) -> Option<StateSet> {
+        if let Some(ref nfa_t) = self.states[id].transitions.get(&(c as char)).cloned() {
+            let nfa_t = nfa_t
+                .union(&self.epsilon_expand(nfa_t.clone()))
+                .cloned()
+                .collect();
+            Some(nfa_t)
+        } else {
+            None
+        }
+    }
+
     pub fn print(&self) {
         for state in self.states.iter() {
             println!("{:?}", state);
@@ -192,11 +212,8 @@ empty [label = "" shape = plaintext];
             .to_owned();
 
         let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
-        for state in self.states.iter() {
-            //println!("{} = {}", state.id, state.accept);
-        }
         for ac_state in self.states.iter().filter(|&state| state.accept == true) {
-            println!("{} = {}", ac_state.id, ac_state.accept);
+            //println!("{} = {}", ac_state.id, ac_state.accept);
             ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
         }
         dot.push_str(&(ac_state_dot + "\n"));
@@ -211,7 +228,7 @@ empty [label = "" shape = plaintext];
                     ));
                 }
             }
-            for et_state in state.epsilon_trnasitions.iter() {
+            for et_state in state.epsilon_transitions.iter() {
                 dot.push_str(&format!(
                     "s{} -> s{} [label = \"{}\"]\n",
                     id, et_state, "ε"
@@ -224,8 +241,8 @@ empty [label = "" shape = plaintext];
     }
 }
 
-use std::ops::{Deref, DerefMut};
 use std::iter::FromIterator;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
 pub struct StateSet(pub HashSet<usize>);

@@ -1,122 +1,118 @@
-use std::collections::{HashMap, HashSet};
+use nfa::{Nfa, StateSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
 use std::fs;
 use std::io::{BufWriter, Write};
-use nfa::{Nfa, StateSet};
+
+pub struct State {
+    pub t: [Option<usize>; 256],
+    pub id: usize,
+    pub accept: bool,
+}
+
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut output = "State { t: [".to_string();
+        for i in 0..256 {
+            let s = &match self.t[i] {
+                Some(n) => format!("{}: {}, ", i, n),
+                _ => "".to_string(),
+            };
+            output += s;
+        }
+        output += "], ";
+        output += &format!("id: {}, accept: {}", self.id, self.accept);
+        write!(f, "({})", output)
+    }
+}
+
+impl State {
+    fn new(id: usize, accept: bool) -> Self {
+        State {
+            t: [None; 256],
+            id: id,
+            accept: accept,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Dfa {
-    pub transitions: HashMap<usize, HashMap<char, usize>>,
-    init_state: usize,
-    pub ac_state_set: StateSet,
-    states_num: usize,
+    pub states: Vec<State>,
+    state_num: usize,
 }
 
 impl Dfa {
+    pub fn new() -> Self {
+        Self {
+            states: Vec::new(),
+            state_num: 0,
+        }
+    }
+
     pub fn nfa2dfa(nfa: &Nfa) -> Self {
         Dfa::construct(nfa)
     }
 
     fn construct(nfa: &Nfa) -> Self {
-        let mut dfa = Dfa {
-            transitions: HashMap::new(),
-            init_state: 0,
-            ac_state_set: StateSet::new(),
-            states_num: 0,
-        };
-        let mut nfa_init_state_set = StateSet::new();
-        nfa_init_state_set.insert(0);
-        nfa_init_state_set = nfa.epsilon_expand(nfa_init_state_set);
-        let mut done = HashSet::new();
-        let mut state_set_to_id = HashMap::new();
-        let nfa_ac_states = {
-            let mut ac_state_set = StateSet::new();
-            for ac_state in nfa.states.iter().filter(|&state| state.accept) {
-                ac_state_set.insert(ac_state.id);
+        let mut dfa = Dfa::new();
+        let mut state_num = 0;
+        let mut queue: VecDeque<StateSet> = VecDeque::new();
+        let mut subset_to_state: HashMap<StateSet, usize> = HashMap::new();
+        queue.push_back(nfa.start_states());
+        subset_to_state.insert(nfa.start_states(), state_num);
+        state_num += 1;
+
+        while !queue.is_empty() {
+            let mut accept = false;
+            let subset: StateSet = queue.pop_front().unwrap();
+            let mut transitions: Vec<Option<StateSet>> = Vec::with_capacity(256);
+            for _ in 0..256 {
+                transitions.push(None);
             }
-            ac_state_set
-        };
-        if nfa_init_state_set.intersection(&nfa_ac_states).count() != 0 {
-            dfa.ac_state_set.insert(0);
+
+            for iter in subset.iter() {
+                accept |= nfa.states[*iter as usize].accept;
+                for c in 0..256 {
+                    if let Some(nfa_t) = nfa.t(*iter as usize, c as u8) {
+                        transitions[c] = Some(nfa_t);
+                    }
+                }
+            }
+            let state = dfa.new_state(accept);
+
+            for c in 0..256 {
+                if let Some(ref next) = transitions[c] {
+                    if !subset_to_state.contains_key(next) {
+                        subset_to_state.insert(next.clone(), state_num);
+                        state_num += 1;
+                        queue.push_back(next.clone());
+                    }
+                    state.t[c] = Some(*subset_to_state.get(next).unwrap());
+                }
+            }
         }
-        dfa.construct_recursive(
-            nfa,
-            nfa_init_state_set,
-            &mut done,
-            &mut state_set_to_id,
-            &nfa_ac_states,
-        );
+        dfa.state_num = state_num;
         dfa
     }
 
-    fn construct_recursive(
-        &mut self,
-        nfa: &Nfa,
-        state_set: StateSet,
-        done: &mut HashSet<StateSet>,
-        state_set_to_id: &mut HashMap<StateSet, usize>,
-        nfa_ac_states: &StateSet,
-    ) {
-        if !state_set_to_id.contains_key(&state_set) {
-            state_set_to_id.insert(state_set.clone(), self.states_num);
-            self.states_num += 1;
-        }
-        let mut subset_transitions = HashMap::new();
-        let mut transitions = HashMap::new();
-        for byte in (0 as u8)..=255 {
-            let c = byte as char;
-            let mut t = StateSet::new();
-            for id in state_set.clone().0.iter() {
-                if let Some(state_set) = nfa.states[*id].transitions.get(&c) {
-                    t = t.union(state_set).cloned().collect();
-                }
-            }
-            let t: StateSet = t.union(&nfa.epsilon_expand(t.clone())).cloned().collect();
-            if !t.is_empty() {
-                state_set_to_id.entry(t.clone()).or_insert(self.states_num);
-                let id = *state_set_to_id.get(&t.clone()).unwrap();
-                if id == self.states_num {
-                    if t.intersection(&nfa_ac_states).count() != 0 {
-                        self.ac_state_set.insert(self.states_num);
-                    }
-                    self.states_num += 1;
-                }
-                transitions.insert(c, id);
-                subset_transitions.insert(c, t);
-            }
-        }
-        {
-            let subset_tval = subset_transitions.values().clone();
-            for next in subset_tval {
-                if !done.contains(next) {
-                    done.insert(next.clone());
-                    self.construct_recursive(
-                        nfa,
-                        next.clone(),
-                        done,
-                        state_set_to_id,
-                        nfa_ac_states,
-                    );
-                }
-            }
-        }
-        self.transitions
-            .insert(*state_set_to_id.get(&state_set).unwrap(), transitions);
+    fn new_state(&mut self, accept: bool) -> &mut State {
+        let id = self.state_num;
+        self.states.push(State::new(id, accept));
+        self.state_num += 1;
+        &mut self.states[id]
     }
 
     pub fn accept(&self, s: &str) -> bool {
-        let mut state = 0;
+        let mut state = &self.states[0];
         for c in s.to_string().chars() {
-            if let Some(&next_state) = self.transitions.get(&state).unwrap().get(&c) {
-                state = next_state;
+            if let Some(next) = state.t[c as usize] {
+                state = &self.states[next];
             } else {
                 return false;
             }
         }
-        if self.ac_state_set.contains(&state) {
-            true
-        } else {
-            false
-        }
+        true
     }
 
     pub fn dot(&self) -> String {
