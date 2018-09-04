@@ -1,3 +1,4 @@
+use self::Label::*;
 use regparser::parser::{Lexer, Node, NodeType, Parser};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -7,18 +8,28 @@ use std::io::{BufWriter, Write};
 #[derive(PartialEq, Eq, Hash)]
 pub enum Label {
     Epsilon,
-    Input(char),
+    Input(u8),
 }
 
 #[derive(Debug)]
 pub struct State {
-    pub transitions: HashMap<char, StateSet>,
-    pub epsilon_transitions: StateSet,
+    pub transition: Vec<Option<StateSet>>,
     pub id: usize,
     pub accept: bool,
 }
 
-impl State {}
+impl State {
+    fn insert_transition(&mut self, label: Label, state: usize) {
+        let c = match label {
+            Input(c) => c as usize,
+            Epsilon => 256,
+        };
+        if self.transition[c].is_none() {
+            self.transition[c] = Some(StateSet::new());
+        }
+        self.transition[c].as_mut().unwrap().insert(state);
+    }
+}
 
 #[derive(Debug)]
 pub struct Nfa {
@@ -34,9 +45,7 @@ impl Nfa {
             let mut nfa = Nfa { states: Vec::new() };
             nfa.add_state();
             let states_num = nfa.states.len();
-            nfa.states[states_num - 1]
-                .epsilon_transitions
-                .insert(states_num);
+            nfa.states[states_num - 1].insert_transition(Label::Epsilon, states_num);
             nfa.construct(&root);
             nfa.add_state();
             let states_num = nfa.states.len();
@@ -47,6 +56,7 @@ impl Nfa {
         }
     }
 
+    //DFA側から呼ぶ
     pub fn start_states(&self) -> StateSet {
         let mut start_t = StateSet::new();
         start_t.insert(0);
@@ -57,8 +67,7 @@ impl Nfa {
     fn add_state(&mut self) {
         let state_num = self.states.len();
         self.states.push(State {
-            transitions: HashMap::new(),
-            epsilon_transitions: StateSet::new(),
+            transition: vec![None; 257],
             id: state_num,
             accept: false,
         });
@@ -75,24 +84,18 @@ impl Nfa {
                 } = node;
 
                 let states_num = self.states.len();
-                self.states[branch_node_id]
-                    .epsilon_transitions
-                    .insert(states_num);
+                self.states[branch_node_id].insert_transition(Label::Epsilon, states_num);
                 self.construct(lhs.as_ref().unwrap());
                 self.add_state();
                 let states_num = self.states.len();
                 let lhs_last_state_id = states_num - 1;
 
                 let states_num = self.states.len();
-                self.states[branch_node_id]
-                    .epsilon_transitions
-                    .insert(states_num);
+                self.states[branch_node_id].insert_transition(Label::Epsilon, states_num);
                 self.construct(rhs.as_ref().unwrap());
 
                 let states_num = self.states.len();
-                self.states[lhs_last_state_id]
-                    .epsilon_transitions
-                    .insert(states_num);
+                self.states[lhs_last_state_id].insert_transition(Label::Epsilon, states_num);
             }
             OpConcat => {
                 let &Node {
@@ -105,29 +108,22 @@ impl Nfa {
                 let &Node { ref lhs, .. } = node;
                 self.add_state();
                 let loop_node_id = self.states.len() - 1;
-                self.states[loop_node_id]
-                    .epsilon_transitions
-                    .insert(loop_node_id + 1);
+                self.states[loop_node_id].insert_transition(Label::Epsilon, loop_node_id + 1);
                 self.construct(lhs.as_ref().unwrap());
                 self.add_state();
                 let last_state_id = self.states.len() - 1;
-                self.states[last_state_id]
-                    .epsilon_transitions
-                    .insert(loop_node_id);
+                self.states[last_state_id].insert_transition(Label::Epsilon, loop_node_id);
                 let next_state_id = self.states.len();
-                self.states[loop_node_id]
-                    .epsilon_transitions
-                    .insert(next_state_id);
+                self.states[loop_node_id].insert_transition(Label::Epsilon, next_state_id);
             }
             Literal => {
                 self.add_state();
                 let states_num = self.states.len();
-                let mut t = StateSet::new();
-                t.insert(states_num);
                 let &Node { ref value, .. } = node;
-                self.states[states_num - 1]
-                    .transitions
-                    .insert(value.as_ref().unwrap().chars().next().unwrap(), t);
+                self.states[states_num - 1].insert_transition(
+                    Input(value.as_ref().unwrap().chars().next().unwrap() as u8),
+                    states_num,
+                );
             }
             _ => {
                 panic!();
@@ -139,16 +135,15 @@ impl Nfa {
         let mut reachable_subsets = StateSet::new();
         for byte in (0 as u8)..=255 {
             let c = byte as char;
-            if let Some(state_set) = self.states[state_id].transitions.get(&c) {
+            if let Some(ref state_set) = self.states[state_id].transition[c as usize] {
                 reachable_subsets = reachable_subsets.union(state_set).cloned().collect();
             }
         }
 
-        reachable_subsets = reachable_subsets
-            .union(&self.states[state_id].epsilon_transitions)
-            .cloned()
-            .collect();
-        reachable_subsets
+        match self.states[state_id].transition[256] {
+            Some(ref eps) => reachable_subsets.union(eps).cloned().collect(),
+            None => reachable_subsets,
+        }
     }
 
     pub fn epsilon_expand(&self, state_set: StateSet) -> StateSet {
@@ -156,11 +151,12 @@ impl Nfa {
         let mut done: StateSet = StateSet::new();
         while queue.len() != 0 {
             let state_id = queue.pop().unwrap();
-            let next = self.states[state_id].epsilon_transitions.clone();
             done.insert(state_id);
-            for next_state_id in next.iter() {
-                if !done.contains(next_state_id) {
-                    queue.push(*next_state_id);
+            if let Some(ref next) = self.states[state_id].transition[256].as_ref() {
+                for next_state_id in next.iter() {
+                    if !done.contains(next_state_id) {
+                        queue.push(*next_state_id);
+                    }
                 }
             }
         }
@@ -173,7 +169,7 @@ impl Nfa {
             let c = byte as char;
             let mut t = StateSet::new();
             for id in reachable_states.0.iter() {
-                if let Some(state_set) = self.states[*id].transitions.get(&c) {
+                if let Some(ref state_set) = self.states[*id].transition[c as usize] {
                     t = t.union(state_set).cloned().collect();
                 }
             }
@@ -186,7 +182,7 @@ impl Nfa {
     }
 
     pub fn t(&self, id: usize, c: u8) -> Option<StateSet> {
-        if let Some(ref nfa_t) = self.states[id].transitions.get(&(c as char)).cloned() {
+        if let Some(ref nfa_t) = self.states[id].transition[c as usize] {
             let nfa_t = nfa_t
                 .union(&self.epsilon_expand(nfa_t.clone()))
                 .cloned()
@@ -203,42 +199,42 @@ impl Nfa {
         }
     }
 
-    pub fn write(&self, file_name: &str) {
-        let mut dot = r###"
-digraph G {
-rankdir=LR;
-empty [label = "" shape = plaintext];
-        "###
-            .to_owned();
+    //pub fn write(&self, file_name: &str) {
+    //    let mut dot = r###"
+    //digraph G {
+    //rankdir=LR;
+    //empty [label = "" shape = plaintext];
+    //    "###
+    //        .to_owned();
 
-        let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
-        for ac_state in self.states.iter().filter(|&state| state.accept == true) {
-            //println!("{} = {}", ac_state.id, ac_state.accept);
-            ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
-        }
-        dot.push_str(&(ac_state_dot + "\n"));
-        dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"];\n");
+    //    let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
+    //    for ac_state in self.states.iter().filter(|&state| state.accept == true) {
+    //        //println!("{} = {}", ac_state.id, ac_state.accept);
+    //        ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
+    //    }
+    //    dot.push_str(&(ac_state_dot + "\n"));
+    //    dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"];\n");
 
-        for (id, state) in self.states.iter().enumerate() {
-            for (label, t_state_set) in state.transitions.iter() {
-                for t_state in t_state_set.iter() {
-                    dot.push_str(&format!(
-                        "s{} -> s{} [label = \"{}\"]\n",
-                        id, t_state, label
-                    ));
-                }
-            }
-            for et_state in state.epsilon_transitions.iter() {
-                dot.push_str(&format!(
-                    "s{} -> s{} [label = \"{}\"]\n",
-                    id, et_state, "ε"
-                ));
-            }
-        }
-        dot.push_str("}");
-        let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
-        f.write(dot.as_bytes()).unwrap();
-    }
+    //    for (id, state) in self.states.iter().enumerate() {
+    //        for (label, t_state_set) in state.transitions.iter() {
+    //            for t_state in t_state_set.iter() {
+    //                dot.push_str(&format!(
+    //                    "s{} -> s{} [label = \"{}\"]\n",
+    //                    id, t_state, label
+    //                ));
+    //            }
+    //        }
+    //        for et_state in state.epsilon_transitions.iter() {
+    //            dot.push_str(&format!(
+    //                "s{} -> s{} [label = \"{}\"]\n",
+    //                id, et_state, "ε"
+    //            ));
+    //        }
+    //    }
+    //    dot.push_str("}");
+    //    let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
+    //    f.write(dot.as_bytes()).unwrap();
+    //}
 }
 
 use std::iter::FromIterator;
@@ -297,4 +293,16 @@ impl StateSet {
     pub fn new() -> StateSet {
         StateSet(HashSet::new())
     }
+}
+
+macro_rules! state_set {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_state_set = StateSet::new();
+            $(
+                temp_state_set.push($x);
+            )*
+            temp_state_set
+        }
+    };
 }
