@@ -192,6 +192,19 @@ fn regex_accept_star() {
 }
 
 #[test]
+fn regex_accept_dot() {
+    let regex = "(a.*bc|bd)";
+    let nfa = Nfa::re2nfa(regex);
+    let dfa = Dfa::nfa2dfa(&nfa);
+    let s = "bd";
+    assert!(dfa.accept(s));
+    let s = "abc";
+    assert!(dfa.accept(s));
+    let s = "adddbc";
+    assert!(dfa.accept(s));
+}
+
+#[test]
 fn regex_accept_01() {
     let regex = "(a|b)c";
     let nfa = Nfa::re2nfa(regex);

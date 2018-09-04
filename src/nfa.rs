@@ -9,6 +9,7 @@ use std::io::{BufWriter, Write};
 pub enum Label {
     Epsilon,
     Input(u8),
+    Dot,
 }
 
 #[derive(Debug)]
@@ -20,14 +21,24 @@ pub struct State {
 
 impl State {
     fn insert_transition(&mut self, label: Label, state: usize) {
-        let c = match label {
-            Input(c) => c as usize,
-            Epsilon => 256,
-        };
-        if self.transition[c].is_none() {
-            self.transition[c] = Some(StateSet::new());
+        if let Dot = label {
+            for i in 0..=255 {
+                if self.transition[i].is_none() {
+                    self.transition[i] = Some(StateSet::new());
+                }
+                self.transition[i].as_mut().unwrap().insert(state);
+            }
+        } else {
+            let c = if let Input(c) = label {
+                c as usize
+            } else {
+                256
+            };
+            if self.transition[c].is_none() {
+                self.transition[c] = Some(StateSet::new());
+            }
+            self.transition[c].as_mut().unwrap().insert(state);
         }
-        self.transition[c].as_mut().unwrap().insert(state);
     }
 }
 
@@ -115,6 +126,11 @@ impl Nfa {
                 self.states[last_state_id].insert_transition(Label::Epsilon, loop_node_id);
                 let next_state_id = self.states.len();
                 self.states[loop_node_id].insert_transition(Label::Epsilon, next_state_id);
+            }
+            Dot => {
+                self.add_state();
+                let states_num = self.states.len();
+                self.states[states_num - 1].insert_transition(Label::Dot, states_num);
             }
             Literal => {
                 self.add_state();
