@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs;
 use std::io::{BufWriter, Write};
+use std::mem;
 
+#[derive(Clone)]
 pub struct State {
     pub t: [Option<usize>; 256],
     pub id: usize,
@@ -146,6 +148,90 @@ impl Dfa {
         let dot = self.dot();
         let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
         f.write(dot.as_bytes()).unwrap();
+    }
+}
+
+impl Dfa {
+    pub fn minimize(&mut self) {
+        let mut distinction_table = vec![Vec::new(); self.states.len()];
+        for i in 0..self.states.len() - 1 {
+            for j in ((i + 1)..self.states.len()).rev() {
+                distinction_table[i].push(self.states[i].accept != self.states[j].accept);
+            }
+        }
+
+        let mut distinction_flag = true;
+        while distinction_flag {
+            distinction_flag = false;
+            for i in 0..(self.states.len() - 1) {
+                for j in (i + 1)..self.states.len() {
+                    if !distinction_table[i][self.states.len() - j - 1] {
+                        for c in 0..=255 {
+                            let mut n1 = self.states[i].t[c];
+                            let mut n2 = self.states[j].t[c];
+                            if n1 != n2 {
+                                if n1 > n2 {
+                                    mem::swap(&mut n1, &mut n2);
+                                };
+                                if n1.is_none() || n2.is_none()
+                                    || distinction_table[n1.unwrap()]
+                                        [self.states.len() - n2.unwrap() - 1]
+                                {
+                                    distinction_flag = true;
+                                    distinction_table[i][self.states.len() - j - 1] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut swap_map: HashMap<usize, usize> = HashMap::new();
+        for i in 0..self.states.len() {
+            for j in (i + 1)..self.states.len() {
+                if !swap_map.contains_key(&j) {
+                    if !distinction_table[i][self.states.len() - j - 1] {
+                        swap_map.insert(j, i);
+                    }
+                }
+            }
+        }
+
+        if swap_map.is_empty() {
+            return;
+        }
+
+        let minimum_size = self.states.len() - swap_map.len();
+        let mut replace_map = vec![0; self.states.len()];
+        let mut d = 0;
+        for s in 0..self.states.len() {
+            if !swap_map.contains_key(&s) {
+                replace_map[s] = d;
+                d += 1;
+                if s != replace_map[s] {
+                    self.states[replace_map[s]] = self.states[s].clone();
+                    self.states[replace_map[s]].id = replace_map[s];
+                }
+            } else {
+                replace_map[s] = replace_map[swap_map[&s]];
+            }
+        }
+
+        {
+            let mut i = 0;
+
+            while self.states[i].id < minimum_size {
+                for c in 0..=255 {
+                    if let Some(n) = self.states[i].t[c] {
+                        self.states[i].t[c] = Some(replace_map[n]);
+                    }
+                }
+                i += 1;
+            }
+            self.states.resize(minimum_size, State::new(0, false));
+        }
     }
 }
 
