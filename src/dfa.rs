@@ -126,18 +126,20 @@ impl Dfa {
             .to_owned();
         let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
 
-        for ac_state in self.ac_state_set.iter() {
-            ac_state_dot.push_str(&("s".to_owned() + &ac_state.to_string() + " "));
+        for ac_state in self.states.iter().filter(|&s| s.accept) {
+            ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
         }
         ac_state_dot.push_str(";\n");
         dot.push_str(&ac_state_dot);
         dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"]\n");
-        for (state, transitions) in self.transitions.iter() {
-            for (label, t_state) in transitions.iter() {
-                dot.push_str(&format!(
-                    "s{} -> s{} [label = \"{}\"]\n",
-                    state, t_state, label
-                ));
+        for s in self.states.iter() {
+            for (label, t_state) in s.t.iter().enumerate() {
+                if let Some(t_state) = t_state {
+                    dot.push_str(&format!(
+                        "s{} -> s{} [label = \"{}\"]\n",
+                        s.id, t_state, label
+                    ));
+                }
             }
         }
         dot.push_str("}");
