@@ -232,8 +232,8 @@ impl Dfa {
                 }
                 i += 1;
             }
-            self.states.resize(minimum_size, State::new(0, false));
         }
+        drop(self.states.drain(minimum_size..));
     }
 }
 
