@@ -33,7 +33,7 @@ type Element = usize;
 
 pub struct Monoid {
     multiply_table: Vec<Vec<usize>>,
-    char_morphism: Vec<usize>,
+    char_morphism: Vec<Option<usize>>,
 }
 
 impl Monoid {
@@ -41,7 +41,7 @@ impl Monoid {
         let mut queue = VecDeque::new();
         let ident = TransitionPat::identity(dfa.states.len());
         let mut transitions_map = HashMap::new();
-        let mut char_morphism = Vec::new();
+        let mut char_morphism = vec![None; 256];
         let tmap_len = transitions_map.len();
         transitions_map.insert(ident.clone(), tmap_len);
         queue.push_front(ident.clone());
@@ -60,11 +60,11 @@ impl Monoid {
                     };
                 }
 
-                if transitions_map.contains_key(&next) {
+                if !transitions_map.contains_key(&next) {
                     let tmap_len = transitions_map.len();
                     transitions_map.insert(next.clone(), tmap_len);
                     if pat == ident {
-                        char_morphism[c] = tmap_len;
+                        char_morphism[c] = Some(tmap_len);
                     }
                     queue.push_front(next);
                 }
