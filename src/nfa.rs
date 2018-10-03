@@ -138,7 +138,6 @@ impl Nfa {
                 let last_state_id = self.states.len() - 1;
                 let next_state_id = self.states.len();
                 self.states[last_state_id].insert_transition(Label::Epsilon, next_state_id);
-                let pivot_node_id = self.states.len() - 1;
                 self.states[pivot_node_id].insert_transition(Label::Epsilon, next_state_id);
             }
             Dot => {
@@ -150,9 +149,7 @@ impl Nfa {
                 self.add_state();
                 let states_num = self.states.len();
                 let &Node { ref value, .. } = node;
-                println!("{:?}", value);
-                self.states[states_num - 1]
-                    .insert_transition(Input(value.unwrap() as u8), states_num);
+                self.states[states_num - 1].insert_transition(Input(value.unwrap()), states_num);
             }
             _ => {
                 panic!();
