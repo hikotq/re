@@ -213,7 +213,7 @@ impl Dfa {
                 replace_map[s] = d;
                 d += 1;
                 if s != replace_map[s] {
-                    self.states[replace_map[s]] = self.states[s].clone();
+                    self.states.swap(replace_map[s], s);
                     self.states[replace_map[s]].id = replace_map[s];
                 }
             } else {
