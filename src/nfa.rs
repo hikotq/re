@@ -87,6 +87,10 @@ impl Nfa {
     fn construct(&mut self, node: &Node) {
         use self::NodeType::*;
         match node.node_type {
+            Group => {
+                let &Node { ref lhs, .. } = node;
+                self.construct(lhs.as_ref().unwrap());
+            }
             OpUnion => {
                 self.add_state();
                 let branch_node_id = self.states.len() - 1;
