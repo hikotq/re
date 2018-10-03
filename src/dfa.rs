@@ -68,10 +68,7 @@ impl Dfa {
         while !queue.is_empty() {
             let mut accept = false;
             let subset: StateSet = queue.pop_front().unwrap();
-            let mut transitions: Vec<Option<StateSet>> = Vec::with_capacity(256);
-            for _ in 0..256 {
-                transitions.push(None);
-            }
+            let mut transitions: Vec<Option<StateSet>> = vec![None; 256];
 
             for iter in subset.iter() {
                 accept |= nfa.states[*iter as usize].accept;
@@ -85,7 +82,7 @@ impl Dfa {
 
             for c in 0..256 {
                 if let Some(ref next) = transitions[c] {
-                    if !subset_to_state.contains_key(next) {
+                    if !subset_to_state.contains_key(&next) {
                         subset_to_state.insert(next.clone(), state_num);
                         state_num += 1;
                         queue.push_back(next.clone());
@@ -123,7 +120,7 @@ impl Dfa {
             rankdir=LR;
             empty [label = "" shape = plaintext];
         "###
-            .to_owned();
+        .to_owned();
         let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
 
         for ac_state in self.states.iter().filter(|&s| s.accept) {
@@ -149,7 +146,7 @@ impl Dfa {
     pub fn write(&self, file_name: &str) {
         let dot = self.dot();
         let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
-        f.write(dot.as_bytes()).unwrap();
+        f.write(dot.as_bytes()).ok();
     }
 }
 
@@ -175,9 +172,8 @@ impl Dfa {
                                 if n1 > n2 {
                                     mem::swap(&mut n1, &mut n2);
                                 };
-                                if n1.is_none() || n2.is_none()
-                                    || distinction_table[n1.unwrap()]
-                                        [self.states.len() - n2.unwrap() - 1]
+                                if n1.is_none() || n2.is_none() || distinction_table[n1.unwrap()]
+                                    [self.states.len() - n2.unwrap() - 1]
                                 {
                                     distinction_flag = true;
                                     distinction_table[i][self.states.len() - j - 1] = true;
