@@ -221,42 +221,47 @@ impl Nfa {
         }
     }
 
-    //pub fn write(&self, file_name: &str) {
-    //    let mut dot = r###"
-    //digraph G {
-    //rankdir=LR;
-    //empty [label = "" shape = plaintext];
-    //    "###
-    //        .to_owned();
+    pub fn dot(&self) -> String {
+        let mut dot = r###"
+            digraph G {
+            rankdir=LR;
+            empty [label = "" shape = plaintext];
+        "###
+        .to_owned();
 
-    //    let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
-    //    for ac_state in self.states.iter().filter(|&state| state.accept == true) {
-    //        //println!("{} = {}", ac_state.id, ac_state.accept);
-    //        ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
-    //    }
-    //    dot.push_str(&(ac_state_dot + "\n"));
-    //    dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"];\n");
+        let mut ac_state_dot = "\nnode [shape = doublecircle]".to_owned();
+        for ac_state in self.states.iter().filter(|&state| state.accept == true) {
+            ac_state_dot.push_str(&("s".to_owned() + &ac_state.id.to_string() + " "));
+        }
+        dot.push_str(&(ac_state_dot + "\n"));
+        dot.push_str("node [shape = circle];\nempty -> s0 [label = \"start\"];\n");
 
-    //    for (id, state) in self.states.iter().enumerate() {
-    //        for (label, t_state_set) in state.transitions.iter() {
-    //            for t_state in t_state_set.iter() {
-    //                dot.push_str(&format!(
-    //                    "s{} -> s{} [label = \"{}\"]\n",
-    //                    id, t_state, label
-    //                ));
-    //            }
-    //        }
-    //        for et_state in state.epsilon_transitions.iter() {
-    //            dot.push_str(&format!(
-    //                "s{} -> s{} [label = \"{}\"]\n",
-    //                id, et_state, "ε"
-    //            ));
-    //        }
-    //    }
-    //    dot.push_str("}");
-    //    let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
-    //    f.write(dot.as_bytes()).unwrap();
-    //}
+        for s in self.states.iter() {
+            for (label, t_state_set) in s.transition.iter().enumerate() {
+                if let Some(t_state_set) = t_state_set {
+                    let label = if label == 256 {
+                        "ε".to_string()
+                    } else {
+                        label.to_string()
+                    };
+                    for t_state in t_state_set.iter() {
+                        dot.push_str(&format!(
+                            "s{} -> s{} [label = \"{}\"]\n",
+                            s.id, t_state, label
+                        ));
+                    }
+                }
+            }
+        }
+        dot.push_str("}");
+        dot
+    }
+
+    pub fn write(&self, file_name: &str) {
+        let dot = self.dot();
+        let mut f = BufWriter::new(fs::File::create(file_name).unwrap());
+        f.write(dot.as_bytes()).ok();
+    }
 }
 
 use std::iter::FromIterator;
