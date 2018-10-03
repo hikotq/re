@@ -133,12 +133,12 @@ impl Nfa {
             }
             OpZeroOne => {
                 let &Node { ref lhs, .. } = node;
-                let pivot_node_id = self.states.len() - 1;
+                let branch_node_id = self.states.len() - 1;
                 self.construct(lhs.as_ref().unwrap());
                 let last_state_id = self.states.len() - 1;
                 let next_state_id = self.states.len();
                 self.states[last_state_id].insert_transition(Label::Epsilon, next_state_id);
-                self.states[pivot_node_id].insert_transition(Label::Epsilon, next_state_id);
+                self.states[branch_node_id].insert_transition(Label::Epsilon, next_state_id);
             }
             Dot => {
                 self.add_state();
