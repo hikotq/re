@@ -74,7 +74,11 @@ impl Dfa {
                 accept |= nfa.states[*iter as usize].accept;
                 for c in 0..256 {
                     if let Some(nfa_t) = nfa.t(*iter as usize, c as u8) {
-                        transitions[c] = Some(nfa_t);
+                        if let Some(ref t) = transitions[c].take() {
+                            transitions[c] = Some(nfa_t.union(t).cloned().collect());
+                        } else {
+                            transitions[c] = Some(nfa_t);
+                        }
                     }
                 }
             }
