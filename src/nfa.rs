@@ -71,7 +71,7 @@ impl Nfa {
     pub fn start_states(&self) -> StateSet {
         let mut start_t = StateSet::new();
         start_t.insert(0);
-        let start_t = self.epsilon_expand(start_t);
+        let start_t = self.epsilon_expand(&start_t);
         start_t
     }
 
@@ -127,6 +127,16 @@ impl Nfa {
                 let next_state_id = self.states.len();
                 self.states[loop_node_id].insert_transition(Label::Epsilon, next_state_id);
             }
+            OpZeroOne => {
+                let &Node { ref lhs, .. } = node;
+                let pivot_node_id = self.states.len() - 1;
+                self.construct(lhs.as_ref().unwrap());
+                let last_state_id = self.states.len() - 1;
+                let next_state_id = self.states.len();
+                self.states[last_state_id].insert_transition(Label::Epsilon, next_state_id);
+                let pivot_node_id = self.states.len() - 1;
+                self.states[pivot_node_id].insert_transition(Label::Epsilon, next_state_id);
+            }
             Dot => {
                 self.add_state();
                 let states_num = self.states.len();
@@ -136,10 +146,9 @@ impl Nfa {
                 self.add_state();
                 let states_num = self.states.len();
                 let &Node { ref value, .. } = node;
-                self.states[states_num - 1].insert_transition(
-                    Input(value.as_ref().unwrap().chars().next().unwrap() as u8),
-                    states_num,
-                );
+                println!("{:?}", value);
+                self.states[states_num - 1]
+                    .insert_transition(Input(value.unwrap() as u8), states_num);
             }
             _ => {
                 panic!();
@@ -162,8 +171,8 @@ impl Nfa {
         }
     }
 
-    pub fn epsilon_expand(&self, state_set: StateSet) -> StateSet {
-        let mut queue = state_set.0.iter().cloned().collect::<Vec<usize>>();
+    pub fn epsilon_expand(&self, state_set: &StateSet) -> StateSet {
+        let mut queue = state_set.iter().cloned().collect::<Vec<usize>>();
         let mut done: StateSet = StateSet::new();
         while queue.len() != 0 {
             let state_id = queue.pop().unwrap();
@@ -189,7 +198,7 @@ impl Nfa {
                     t = t.union(state_set).cloned().collect();
                 }
             }
-            let t: StateSet = t.union(&self.epsilon_expand(t.clone())).cloned().collect();
+            let t: StateSet = t.union(&self.epsilon_expand(&t)).cloned().collect();
             if !t.is_empty() {
                 transitions.insert(c, t);
             }
@@ -199,10 +208,7 @@ impl Nfa {
 
     pub fn t(&self, id: usize, c: u8) -> Option<StateSet> {
         if let Some(ref nfa_t) = self.states[id].transition[c as usize] {
-            let nfa_t = nfa_t
-                .union(&self.epsilon_expand(nfa_t.clone()))
-                .cloned()
-                .collect();
+            let nfa_t = nfa_t.union(&self.epsilon_expand(&nfa_t)).cloned().collect();
             Some(nfa_t)
         } else {
             None
